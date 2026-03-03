@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+
 const MOCK_OPS = [
   { id: 1, name: "FINEP - Inovacred 4.0", entity: "FINEP", type: "Crédito", value: "R$ 2M–20M", deadline: "2026-04-15", match: 94, tags: ["Inovação", "P&D", "Agro"], desc: "Financiamento para inovação em empresas de receita até R$300M. Taxa subsidiada TJLP + 2%a.a." },
   { id: 2, name: "BNDES Agro Inovação", entity: "BNDES", type: "Subvenção", value: "R$ 500K–5M", deadline: "2026-05-20", match: 91, tags: ["Agro", "Sustentabilidade", "Digital"], desc: "Apoio à digitalização e rastreabilidade na cadeia agropecuária." },
@@ -126,21 +128,86 @@ export default function App() {
   const [stripe, setStripe] = useState(false);
   const [wa, setWa] = useState("");
   const [waOk, setWaOk] = useState(false);
+  const [opps, setOpps] = useState(MOCK_OPS);
+  const [aiClassNote, setAiClassNote] = useState("");
+  const [advisor, setAdvisor] = useState(null);
+  const [advisorLoading, setAdvisorLoading] = useState(false);
   const fr = useRef(null);
 
   useEffect(() => { setFi(false); const t = setTimeout(() => setFi(true), 50); return () => clearTimeout(t); }, [pg]);
 
   const steps = ["Analisando perfil do projeto…", "Cruzando com bases FINEP/BNDES…", "Calculando aderência…", "Ranqueando oportunidades…", "Preparando resultados…"];
 
-  const go = () => {
+  const classifySources = async (projectContext) => {
+    const uniqueSources = [...new Set(MOCK_OPS.map(o => (o.entity || "").split("/")[0].trim().toUpperCase()))].filter(Boolean);
+    const res = await fetch(`${API_BASE}/v1/ai/classify-sources`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_context: projectContext,
+        sources: uniqueSources,
+      }),
+    });
+    if (!res.ok) throw new Error("ai_classification_failed");
+    return res.json();
+  };
+
+  const go = async () => {
     if (!txt.trim() && !fn) return;
     setPg("scan"); setSs(0); let s = 0;
     const iv = setInterval(() => { s++; if (s >= steps.length) { clearInterval(iv); setTimeout(() => setPg("results"), 600); } else setSs(s); }, 1200);
+    try {
+      const context = txt.trim() || `[Arquivo: ${fn}]`;
+      const ai = await classifySources(context);
+      const scoreBySource = new Map((ai.classifications || []).map(c => [String(c.source || "").toUpperCase(), Number(c.score || 0)]));
+      const adjusted = MOCK_OPS.map((o) => {
+        const sourceKey = (o.entity || "").split("/")[0].trim().toUpperCase();
+        const srcScore = scoreBySource.get(sourceKey);
+        if (!srcScore && srcScore !== 0) return o;
+        const delta = Math.round((srcScore - 70) / 7);
+        return { ...o, match: Math.max(1, Math.min(99, o.match + delta)) };
+      });
+      setOpps(adjusted);
+      setAiClassNote(ai.general_notes || "");
+    } catch {
+      setOpps(MOCK_OPS);
+      setAiClassNote("");
+    }
   };
 
   const tog = (id) => setSel(p => p.includes(id) ? p.filter(x => x !== id) : p.length >= 3 ? p : [...p, id]);
-  const sorted = [...MOCK_OPS].sort((a, b) => b.match - a.match);
+  const sorted = [...opps].sort((a, b) => b.match - a.match);
   const ps = { opacity: fi ? 1 : 0, transform: fi ? "translateY(0)" : "translateY(12px)", transition: "all 0.6s cubic-bezier(0.16,1,0.3,1)" };
+
+  const runAdvisor = async () => {
+    const selectedOpps = sorted.filter(o => sel.includes(o.id)).map(o => o.name);
+    const selectedSources = [...new Set(sorted.filter(o => sel.includes(o.id)).map(o => o.entity.split("/")[0].trim().toUpperCase()))];
+    const context = txt.trim() || `Projeto baseado nas oportunidades selecionadas: ${selectedOpps.join(", ")}`;
+    setAdvisorLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/v1/ai/project-advisor`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_context: context,
+          selected_sources: selectedSources,
+          selected_opportunities: selectedOpps,
+        }),
+      });
+      if (!res.ok) throw new Error("ai_project_advisor_failed");
+      const data = await res.json();
+      setAdvisor(data);
+    } catch {
+      setAdvisor({
+        overall_assessment: "Não foi possível gerar análise avançada agora. Verifique o backend e tente novamente.",
+        strengths: [],
+        gaps: [],
+        next_steps: ["Tentar novamente em alguns segundos."],
+      });
+    } finally {
+      setAdvisorLoading(false);
+    }
+  };
 
   const Logo = ({ size = 40 }) => (
     <div style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }} onClick={() => setPg("landing")}>
@@ -201,6 +268,7 @@ export default function App() {
           </div>}
           <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12 }}>
             <p style={{ fontSize: 11, color: "#444", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 }}>{sorted.length} oportunidades detectadas — selecione até 3</p>
+            {aiClassNote && <div style={{ fontSize: 12, color: "#7bcf9a", background: "rgba(0,230,118,0.05)", border: "1px solid rgba(0,230,118,0.15)", borderRadius: 10, padding: "10px 12px", marginBottom: 8 }}>{aiClassNote}</div>}
             {sorted.map((o, i) => <div key={o.id} style={{ animation: "slideUp 0.5s ease " + (i * 0.1) + "s both" }}><OppCard opp={o} selected={sel.includes(o.id)} onToggle={tog} disabled={sel.length >= 3 && !sel.includes(o.id)} /></div>)}
           </div>
         </div>
@@ -249,9 +317,38 @@ export default function App() {
 
             {dt === "round" && <div style={{ animation: "slideUp 0.3s ease" }}>
               <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 14, padding: 28, minHeight: 400, display: "flex", flexDirection: "column" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
+                  <p style={{ fontSize: 12, color: "#666" }}>Análise do projeto com base nas fontes e oportunidades selecionadas.</p>
+                  <button onClick={runAdvisor} disabled={advisorLoading} style={{ background: advisorLoading ? "rgba(255,255,255,0.06)" : "#00E676", border: "none", borderRadius: 8, padding: "8px 14px", color: advisorLoading ? "#666" : "#000", fontSize: 12, fontWeight: 700, cursor: advisorLoading ? "default" : "pointer" }}>{advisorLoading ? "Analisando..." : "Gerar Análise IA"}</button>
+                </div>
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16, marginBottom: 20 }}>
-                  <div style={{ background: "rgba(0,230,118,0.04)", borderRadius: "4px 14px 14px 14px", padding: "16px 20px", maxWidth: "85%" }}><p style={{ fontSize: 13, color: "#ccc", lineHeight: 1.6 }}>Olá Gabriel! A <strong style={{ color: "#00E676" }}>FINEP Inovacred 4.0</strong> precisa de atenção — falta o demonstrativo financeiro, prazo 15/mar. Quer um checklist?</p></div>
-                  <div style={{ background: "rgba(0,230,118,0.04)", borderRadius: "4px 14px 14px 14px", padding: "16px 20px", maxWidth: "85%" }}><p style={{ fontSize: 13, color: "#ccc", lineHeight: 1.6 }}>O <strong style={{ color: "#F5A623" }}>Plano de Negócios</strong> do BNDES Agro pode ser otimizado. Posso sugerir ajustes na seção ESG para aumentar aderência.</p></div>
+                  {advisor ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      <div style={{ background: "rgba(0,230,118,0.04)", borderRadius: 12, padding: "14px 16px" }}>
+                        <p style={{ fontSize: 12, color: "#8eddb0", marginBottom: 6, textTransform: "uppercase", letterSpacing: 1 }}>Visão Geral</p>
+                        <p style={{ fontSize: 13, color: "#ddd", lineHeight: 1.6 }}>{advisor.overall_assessment}</p>
+                      </div>
+                      <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
+                        <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 10, padding: 12 }}>
+                          <p style={{ fontSize: 11, color: "#00E676", marginBottom: 6, textTransform: "uppercase", letterSpacing: 1 }}>Pontos Fortes</p>
+                          <ul style={{ paddingLeft: 16, margin: 0 }}>{(advisor.strengths || []).slice(0, 4).map((s, i) => <li key={i} style={{ fontSize: 12, color: "#ccc", marginBottom: 4 }}>{s}</li>)}</ul>
+                        </div>
+                        <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 10, padding: 12 }}>
+                          <p style={{ fontSize: 11, color: "#F5A623", marginBottom: 6, textTransform: "uppercase", letterSpacing: 1 }}>Gaps</p>
+                          <ul style={{ paddingLeft: 16, margin: 0 }}>{(advisor.gaps || []).slice(0, 4).map((s, i) => <li key={i} style={{ fontSize: 12, color: "#ccc", marginBottom: 4 }}>{s}</li>)}</ul>
+                        </div>
+                      </div>
+                      <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 10, padding: 12 }}>
+                        <p style={{ fontSize: 11, color: "#7fb0ff", marginBottom: 6, textTransform: "uppercase", letterSpacing: 1 }}>Próximos Passos</p>
+                        <ol style={{ paddingLeft: 16, margin: 0 }}>{(advisor.next_steps || []).slice(0, 5).map((s, i) => <li key={i} style={{ fontSize: 12, color: "#ccc", marginBottom: 4 }}>{s}</li>)}</ol>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ background: "rgba(0,230,118,0.04)", borderRadius: "4px 14px 14px 14px", padding: "16px 20px", maxWidth: "85%" }}><p style={{ fontSize: 13, color: "#ccc", lineHeight: 1.6 }}>Clique em <strong style={{ color: "#00E676" }}>Gerar Análise IA</strong> para avaliar o projeto e receber próximos passos com base nas fontes selecionadas.</p></div>
+                      <div style={{ background: "rgba(0,230,118,0.04)", borderRadius: "4px 14px 14px 14px", padding: "16px 20px", maxWidth: "85%" }}><p style={{ fontSize: 13, color: "#ccc", lineHeight: 1.6 }}>A análise ajusta foco por aderência de funding e sugere ações práticas para aumentar chance de aprovação.</p></div>
+                    </>
+                  )}
                 </div>
                 <div style={{ display: "flex", gap: 8, borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: 16 }}>
                   <input placeholder="Pergunte ao Roundhouse…" style={{ flex: 1, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "12px 16px", color: "#fff", fontSize: 13 }} onFocus={e => e.target.style.borderColor = "rgba(0,230,118,0.3)"} onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.08)"} />
