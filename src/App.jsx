@@ -128,6 +128,7 @@ export default function App() {
   const [stripe, setStripe] = useState(false);
   const [wa, setWa] = useState("");
   const [waOk, setWaOk] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const [opps, setOpps] = useState(MOCK_OPS);
   const [aiClassNote, setAiClassNote] = useState("");
   const [advisor, setAdvisor] = useState(null);
@@ -137,6 +138,29 @@ export default function App() {
   useEffect(() => { setFi(false); const t = setTimeout(() => setFi(true), 50); return () => clearTimeout(t); }, [pg]);
 
   const steps = ["Analisando perfil do projeto…", "Cruzando com bases FINEP/BNDES…", "Calculando aderência…", "Ranqueando oportunidades…", "Preparando resultados…"];
+
+  const handlePickedFile = (file) => {
+    if (!file) return;
+    setFn(file.name);
+    setTxt("[Arquivo: " + file.name + "]");
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setDragOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer?.files?.[0];
+    handlePickedFile(file);
+  };
 
   const classifySources = async (projectContext) => {
     const uniqueSources = [...new Set(MOCK_OPS.map(o => (o.entity || "").split("/")[0].trim().toUpperCase()))].filter(Boolean);
@@ -227,13 +251,23 @@ export default function App() {
         <div style={{ ...ps, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "40px 20px", position: "relative", zIndex: 1 }}>
           <div style={{ animation: "float 4s ease-in-out infinite", marginBottom: 48 }}><Logo size={56} /></div>
           <p style={{ fontSize: 14, color: "#555", maxWidth: 400, textAlign: "center", lineHeight: 1.7, marginBottom: 48, fontWeight: 300, letterSpacing: 0.3 }}>Descreva ou envie seu projeto.<br/>Vamos encontrar o fomento certo.</p>
-          <div style={{ width: "100%", maxWidth: 560 }}>
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            style={{ width: "100%", maxWidth: 560, position: "relative" }}
+          >
+            {dragOver && (
+              <div style={{ position: "absolute", inset: 0, borderRadius: 14, border: "1px dashed rgba(0,230,118,0.6)", background: "rgba(0,230,118,0.08)", zIndex: 5, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+                <span style={{ fontSize: 13, color: "#8ce6b0", letterSpacing: 0.4 }}>Solte o arquivo aqui para anexar</span>
+              </div>
+            )}
             <textarea value={txt} onChange={e => setTxt(e.target.value)} placeholder="Descreva seu projeto — setor, tecnologia, estágio, objetivo…" rows={3}
-              style={{ width: "100%", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: "20px 24px", color: "#fff", fontSize: 15, fontFamily: "'IBM Plex Sans', sans-serif", resize: "none", lineHeight: 1.6, transition: "border-color 0.3s" }}
+              style={{ width: "100%", background: "rgba(255,255,255,0.03)", border: "1px solid " + (dragOver ? "rgba(0,230,118,0.45)" : "rgba(255,255,255,0.08)"), borderRadius: 14, padding: "20px 24px", color: "#fff", fontSize: 15, fontFamily: "'IBM Plex Sans', sans-serif", resize: "none", lineHeight: 1.6, transition: "border-color 0.3s" }}
               onFocus={e => e.target.style.borderColor = "rgba(0,230,118,0.3)"} onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.08)"} />
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12 }}>
               <div>
-                <input type="file" ref={fr} onChange={e => { const f = e.target.files?.[0]; if (f) { setFn(f.name); setTxt("[Arquivo: " + f.name + "]"); } }} style={{ display: "none" }} accept=".pdf,.doc,.docx,.txt" />
+                <input type="file" ref={fr} onChange={e => handlePickedFile(e.target.files?.[0])} style={{ display: "none" }} accept=".pdf,.doc,.docx,.txt" />
                 <button onClick={() => fr.current?.click()} style={{ background: "none", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "8px 14px", color: "#666", fontSize: 12, cursor: "pointer", transition: "all 0.3s", display: "flex", alignItems: "center", gap: 6 }}
                   onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(0,230,118,0.3)"; e.currentTarget.style.color = "#aaa"; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "#666"; }}>
