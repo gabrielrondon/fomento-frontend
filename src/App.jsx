@@ -1,6 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+const ACTOR_STORAGE_KEY = "fomentos_actor_id";
+
+function getActorId() {
+  const existing = localStorage.getItem(ACTOR_STORAGE_KEY);
+  if (existing) return existing;
+  const created = `actor_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+  localStorage.setItem(ACTOR_STORAGE_KEY, created);
+  return created;
+}
 
 const MOCK_OPS = [
   { id: 1, name: "FINEP - Inovacred 4.0", entity: "FINEP", type: "Crédito", value: "R$ 2M–20M", deadline: "2026-04-15", match: 94, tags: ["Inovação", "P&D", "Agro"], desc: "Financiamento para inovação em empresas de receita até R$300M. Taxa subsidiada TJLP + 2%a.a." },
@@ -118,6 +127,7 @@ function DashCard({ app }) {
 }
 
 export default function App() {
+  const [actorId] = useState(() => getActorId());
   const [pg, setPg] = useState("landing");
   const [txt, setTxt] = useState("");
   const [fn, setFn] = useState("");
@@ -133,16 +143,70 @@ export default function App() {
   const [aiClassNote, setAiClassNote] = useState("");
   const [advisor, setAdvisor] = useState(null);
   const [advisorLoading, setAdvisorLoading] = useState(false);
+  const [ctxMeta, setCtxMeta] = useState(null);
+  const [uploading, setUploading] = useState(false);
   const fr = useRef(null);
 
   useEffect(() => { setFi(false); const t = setTimeout(() => setFi(true), 50); return () => clearTimeout(t); }, [pg]);
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/v1/project-contexts/current?actor_id=${encodeURIComponent(actorId)}`, { headers: { "X-Actor-ID": actorId } });
+        if (!res.ok) return;
+        const ctx = await res.json();
+        setCtxMeta(ctx);
+        if (ctx?.project_context) setTxt(ctx.project_context);
+        if (ctx?.document?.file_name) setFn(ctx.document.file_name);
+      } catch {
+        // noop
+      }
+    };
+    load();
+  }, [actorId]);
 
   const steps = ["Analisando perfil do projeto…", "Cruzando com bases FINEP/BNDES…", "Calculando aderência…", "Ranqueando oportunidades…", "Preparando resultados…"];
 
-  const handlePickedFile = (file) => {
+  const persistProjectContext = async (contextText) => {
+    const normalized = (contextText || "").trim();
+    if (!normalized) return;
+    const res = await fetch(`${API_BASE}/v1/project-contexts/upsert`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Actor-ID": actorId },
+      body: JSON.stringify({
+        actor_id: actorId,
+        project_context: normalized,
+      }),
+    });
+    if (!res.ok) throw new Error("persist_project_context_failed");
+    const saved = await res.json();
+    setCtxMeta(saved);
+  };
+
+  const handlePickedFile = async (file) => {
     if (!file) return;
-    setFn(file.name);
-    setTxt("[Arquivo: " + file.name + "]");
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("actor_id", actorId);
+      if (txt.trim()) form.append("project_context", txt.trim());
+      const res = await fetch(`${API_BASE}/v1/project-documents/upload`, {
+        method: "POST",
+        headers: { "X-Actor-ID": actorId },
+        body: form,
+      });
+      if (!res.ok) throw new Error("upload_failed");
+      const data = await res.json();
+      const ctx = data?.context || {};
+      setFn(ctx?.document?.file_name || file.name);
+      setTxt(ctx?.project_context || `[Arquivo: ${file.name}]`);
+      setCtxMeta(ctx);
+    } catch {
+      setFn(file.name);
+      setTxt(`[Arquivo: ${file.name}]`);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleDragOver = (e) => {
@@ -182,6 +246,7 @@ export default function App() {
     const iv = setInterval(() => { s++; if (s >= steps.length) { clearInterval(iv); setTimeout(() => setPg("results"), 600); } else setSs(s); }, 1200);
     try {
       const context = txt.trim() || `[Arquivo: ${fn}]`;
+      await persistProjectContext(context);
       const ai = await classifySources(context);
       const scoreBySource = new Map((ai.classifications || []).map(c => [String(c.source || "").toUpperCase(), Number(c.score || 0)]));
       const adjusted = MOCK_OPS.map((o) => {
@@ -206,7 +271,7 @@ export default function App() {
   const runAdvisor = async () => {
     const selectedOpps = sorted.filter(o => sel.includes(o.id)).map(o => o.name);
     const selectedSources = [...new Set(sorted.filter(o => sel.includes(o.id)).map(o => o.entity.split("/")[0].trim().toUpperCase()))];
-    const context = txt.trim() || `Projeto baseado nas oportunidades selecionadas: ${selectedOpps.join(", ")}`;
+    const context = txt.trim() || ctxMeta?.project_context || `Projeto baseado nas oportunidades selecionadas: ${selectedOpps.join(", ")}`;
     setAdvisorLoading(true);
     try {
       const res = await fetch(`${API_BASE}/v1/ai/project-advisor`, {
@@ -268,11 +333,11 @@ export default function App() {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12 }}>
               <div>
                 <input type="file" ref={fr} onChange={e => handlePickedFile(e.target.files?.[0])} style={{ display: "none" }} accept=".pdf,.doc,.docx,.txt" />
-                <button onClick={() => fr.current?.click()} style={{ background: "none", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "8px 14px", color: "#666", fontSize: 12, cursor: "pointer", transition: "all 0.3s", display: "flex", alignItems: "center", gap: 6 }}
+                <button disabled={uploading} onClick={() => fr.current?.click()} style={{ background: "none", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "8px 14px", color: "#666", fontSize: 12, cursor: uploading ? "default" : "pointer", transition: "all 0.3s", display: "flex", alignItems: "center", gap: 6, opacity: uploading ? 0.7 : 1 }}
                   onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(0,230,118,0.3)"; e.currentTarget.style.color = "#aaa"; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "#666"; }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
-                  {fn || "Anexar projeto"}
+                  {uploading ? "Enviando..." : (fn || "Anexar projeto")}
                 </button>
               </div>
               <button onClick={go} disabled={!txt.trim() && !fn} style={{ background: (txt.trim() || fn) ? "linear-gradient(135deg, #00E676, #00C853)" : "rgba(255,255,255,0.05)", border: "none", borderRadius: 10, padding: "10px 28px", color: (txt.trim() || fn) ? "#000" : "#444", fontSize: 14, fontWeight: 600, cursor: (txt.trim() || fn) ? "pointer" : "default", fontFamily: "'Syne', sans-serif", letterSpacing: 0.5, transition: "all 0.3s", boxShadow: (txt.trim() || fn) ? "0 0 24px rgba(0,230,118,0.2)" : "none" }}>Buscar →</button>
@@ -355,6 +420,11 @@ export default function App() {
                   <p style={{ fontSize: 12, color: "#666" }}>Análise do projeto com base nas fontes e oportunidades selecionadas.</p>
                   <button onClick={runAdvisor} disabled={advisorLoading} style={{ background: advisorLoading ? "rgba(255,255,255,0.06)" : "#00E676", border: "none", borderRadius: 8, padding: "8px 14px", color: advisorLoading ? "#666" : "#000", fontSize: 12, fontWeight: 700, cursor: advisorLoading ? "default" : "pointer" }}>{advisorLoading ? "Analisando..." : "Gerar Análise IA"}</button>
                 </div>
+                {ctxMeta?.document?.file_name && (
+                  <div style={{ fontSize: 12, color: "#8ce6b0", marginBottom: 12, padding: "8px 10px", borderRadius: 8, background: "rgba(0,230,118,0.05)", border: "1px solid rgba(0,230,118,0.12)" }}>
+                    Documento ativo: <strong>{ctxMeta.document.file_name}</strong>
+                  </div>
+                )}
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16, marginBottom: 20 }}>
                   {advisor ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
