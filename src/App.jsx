@@ -187,6 +187,7 @@ export default function App() {
   const [uploading, setUploading] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerIntent, setComposerIntent] = useState("nova_busca");
+  const [consultorStarted, setConsultorStarted] = useState(false);
   const fr = useRef(null);
 
   useEffect(() => { setFi(false); const t = setTimeout(() => setFi(true), 50); return () => clearTimeout(t); }, [pg]);
@@ -436,6 +437,7 @@ export default function App() {
       await persistProjectContext(txt);
       setComposerOpen(false);
       if (composerIntent === "reanalisar") {
+        setConsultorStarted(true);
         await runAdvisor();
       } else {
         setDt("apps");
@@ -615,6 +617,9 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
     const hasTimeOrBudget = /(prazo|dias|seman|mes|m[eê]s|ano|r\$|orcamento|orçamento|mil|mi)/i.test(normalized);
     return hasSector && hasGoal && hasStage && hasTimeOrBudget;
   };
+
+  const consultorContext = (txt.trim() || ctxMeta?.project_context || "").trim();
+  const wizardActive = consultorStarted && !composerOpen && !hasMinimumContext(consultorContext);
 
   const saveBriefing = async () => {
     const sector = briefingSector.trim();
@@ -873,7 +878,7 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
                     </div>
                   </div>
                 )}
-                {!hasMinimumContext(txt.trim() || ctxMeta?.project_context || "") && (
+                {wizardActive && (
                   <div style={{ marginBottom: 12, padding: "10px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.02)" }}>
                     <p style={{ fontSize: 12, color: "#ddd", marginBottom: 8 }}>Wizard de Contexto (obrigatório para análise crítica)</p>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 8 }}>
@@ -924,7 +929,7 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
                     </>
                   )}
                 </div>
-                {chatMessages.length > 0 && (
+                {consultorStarted && chatMessages.length > 0 && (
                   <div style={{ maxHeight: 220, overflowY: "auto", borderTop: "1px solid rgba(255,255,255,0.05)", borderBottom: "1px solid rgba(255,255,255,0.05)", padding: "10px 0", marginBottom: 12, display: "flex", flexDirection: "column", gap: 8 }}>
                     {chatMessages.map((m, i) => (
                       <div key={i} style={{ fontSize: 12, color: m.role === "assistant" ? "#d7e6dc" : "#98a0a6", lineHeight: 1.5 }}>
@@ -935,7 +940,7 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
                     {chatLoading && <div style={{ fontSize: 12, color: "#777" }}>Consultor IA está respondendo...</div>}
                   </div>
                 )}
-                <div style={{ display: "flex", gap: 8, borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: 16 }}>
+                {consultorStarted && <div style={{ display: "flex", gap: 8, borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: 16, opacity: wizardActive ? 0.5 : 1 }}>
                   <input
                     value={chatInput}
                     onChange={e => setChatInput(e.target.value)}
@@ -945,13 +950,14 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
                         sendConsultorChat();
                       }
                     }}
-                    placeholder="Pergunte ao Roundhouse…"
+                    placeholder={wizardActive ? "Complete o Wizard para liberar o chat..." : "Pergunte ao Roundhouse…"}
+                    disabled={wizardActive}
                     style={{ flex: 1, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "12px 16px", color: "#fff", fontSize: 13 }}
                     onFocus={e => e.target.style.borderColor = "rgba(0,230,118,0.3)"}
                     onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.08)"}
                   />
-                  <button disabled={chatLoading || !chatInput.trim()} onClick={sendConsultorChat} style={{ background: "#00E676", opacity: chatLoading || !chatInput.trim() ? 0.55 : 1, border: "none", borderRadius: 10, padding: "0 16px", cursor: chatLoading || !chatInput.trim() ? "default" : "pointer", display: "flex", alignItems: "center" }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>
-                </div>
+                  <button disabled={wizardActive || chatLoading || !chatInput.trim()} onClick={sendConsultorChat} style={{ background: "#00E676", opacity: wizardActive || chatLoading || !chatInput.trim() ? 0.55 : 1, border: "none", borderRadius: 10, padding: "0 16px", cursor: wizardActive || chatLoading || !chatInput.trim() ? "default" : "pointer", display: "flex", alignItems: "center" }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>
+                </div>}
               </div>
             </div>}
 
