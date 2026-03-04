@@ -185,6 +185,8 @@ export default function App() {
   const [briefingSaving, setBriefingSaving] = useState(false);
   const [ctxMeta, setCtxMeta] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerIntent, setComposerIntent] = useState("nova_busca");
   const fr = useRef(null);
 
   useEffect(() => { setFi(false); const t = setTimeout(() => setFi(true), 50); return () => clearTimeout(t); }, [pg]);
@@ -421,6 +423,25 @@ export default function App() {
       });
     } finally {
       setAdvisorLoading(false);
+    }
+  };
+
+  const openComposer = (intent) => {
+    setComposerIntent(intent);
+    setComposerOpen(true);
+  };
+
+  const saveComposer = async () => {
+    try {
+      await persistProjectContext(txt);
+      setComposerOpen(false);
+      if (composerIntent === "reanalisar") {
+        await runAdvisor();
+      } else {
+        setDt("apps");
+      }
+    } catch {
+      // noop
     }
   };
 
@@ -737,7 +758,7 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 24px", borderBottom: "1px solid rgba(255,255,255,0.04)", backdropFilter: "blur(20px)", position: "sticky", top: 0, zIndex: 10, background: "rgba(5,5,5,0.8)" }}>
             <Logo size={28} />
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-              <button onClick={() => setPg("landing")} style={{ background: "none", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "6px 14px", color: "#888", fontSize: 12, cursor: "pointer" }}>+ Nova busca</button>
+              <button onClick={() => openComposer("nova_busca")} style={{ background: "none", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "6px 14px", color: "#888", fontSize: 12, cursor: "pointer" }}>+ Nova busca</button>
               <div style={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(0,230,118,0.1)", border: "1px solid rgba(0,230,118,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 600, color: "#00E676" }}>G</div>
             </div>
           </div>
@@ -749,6 +770,44 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
             <div style={{ display: "flex", gap: 0, marginBottom: 32, borderBottom: "1px solid rgba(255,255,255,0.05)", overflowX: "auto" }}>
               {[["apps", "Aplicações"], ["round", "Roundhouse AI"], ["skills", "Skills"], ["qa", "Qualidade IA"], ["notifs", "Notificações"], ["config", "Config"]].map(([k, l]) => <button key={k} onClick={() => setDt(k)} style={{ background: "none", border: "none", borderBottom: "2px solid " + (dt === k ? "#00E676" : "transparent"), padding: "10px 20px", color: dt === k ? "#fff" : "#555", fontSize: 13, cursor: "pointer", fontWeight: dt === k ? 500 : 400, transition: "all 0.3s", whiteSpace: "nowrap" }}>{l}</button>)}
             </div>
+
+            {composerOpen && (
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                style={{ width: "100%", position: "relative", marginBottom: 20 }}
+              >
+                {dragOver && (
+                  <div style={{ position: "absolute", inset: 0, borderRadius: 14, border: "1px dashed rgba(0,230,118,0.6)", background: "rgba(0,230,118,0.08)", zIndex: 5, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+                    <span style={{ fontSize: 13, color: "#8ce6b0", letterSpacing: 0.4 }}>Solte o arquivo aqui para anexar</span>
+                  </div>
+                )}
+                <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid " + (dragOver ? "rgba(0,230,118,0.45)" : "rgba(255,255,255,0.08)"), borderRadius: 14, padding: "16px 18px" }}>
+                  <p style={{ fontSize: 12, color: "#7f8b92", marginBottom: 8 }}>
+                    {composerIntent === "reanalisar" ? "Atualize contexto/arquivo antes da reanálise." : "Nova busca dentro do dashboard: descreva ou envie um novo documento."}
+                  </p>
+                  <textarea
+                    value={txt}
+                    onChange={e => setTxt(e.target.value)}
+                    placeholder="Descreva seu projeto — setor, tecnologia, estágio, objetivo…"
+                    rows={3}
+                    style={{ width: "100%", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontSize: 13, resize: "none", lineHeight: 1.6 }}
+                  />
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <input type="file" ref={fr} onChange={e => handlePickedFile(e.target.files?.[0])} style={{ display: "none" }} accept=".pdf,.doc,.docx,.txt" />
+                      <button onClick={() => fr.current?.click()} disabled={uploading} style={{ background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "8px 12px", color: "#bbb", fontSize: 12, cursor: uploading ? "default" : "pointer", opacity: uploading ? 0.7 : 1 }}>{uploading ? "Enviando..." : "Upload"}</button>
+                      {fn && <span style={{ fontSize: 11, color: "#b9d9c7", background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "4px 8px" }}>{fn}</span>}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <button onClick={() => setComposerOpen(false)} style={{ background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "8px 12px", color: "#bbb", fontSize: 12, cursor: "pointer" }}>Cancelar</button>
+                      <button onClick={saveComposer} style={{ background: "#00E676", border: "none", borderRadius: 8, padding: "8px 12px", color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{composerIntent === "reanalisar" ? "Salvar e Reanalisar" : "Salvar Projeto"}</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {dt === "apps" && <div style={{ display: "flex", flexDirection: "column", gap: 12, animation: "slideUp 0.3s ease" }}>
               {DASH_APPS.map(a => <DashCard key={a.id} app={a} />)}
@@ -765,7 +824,9 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
               <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 14, padding: 28, minHeight: 400, display: "flex", flexDirection: "column" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
                   <p style={{ fontSize: 12, color: "#666" }}>Análise do projeto com base nas fontes e oportunidades selecionadas.</p>
-                  <button onClick={runAdvisor} disabled={advisorLoading} style={{ background: advisorLoading ? "rgba(255,255,255,0.06)" : "#00E676", border: "none", borderRadius: 8, padding: "8px 14px", color: advisorLoading ? "#666" : "#000", fontSize: 12, fontWeight: 700, cursor: advisorLoading ? "default" : "pointer" }}>{advisorLoading ? "Analisando..." : "Gerar Análise IA"}</button>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <button onClick={() => openComposer("reanalisar")} disabled={advisorLoading} style={{ background: advisorLoading ? "rgba(255,255,255,0.06)" : "#00E676", border: "none", borderRadius: 8, padding: "8px 14px", color: advisorLoading ? "#666" : "#000", fontSize: 12, fontWeight: 700, cursor: advisorLoading ? "default" : "pointer" }}>{advisorLoading ? "Analisando..." : "Reanalisar"}</button>
+                  </div>
                 </div>
                 {ctxMeta?.document?.file_name && (
                   <div style={{ fontSize: 12, color: "#8ce6b0", marginBottom: 12, padding: "8px 10px", borderRadius: 8, background: "rgba(0,230,118,0.05)", border: "1px solid rgba(0,230,118,0.12)" }}>
