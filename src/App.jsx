@@ -7,6 +7,7 @@ import {
   runSkill as runSkillAPI,
   updateSkill as updateSkillAPI,
 } from "./skillsApi";
+import { fetchQualitySummary } from "./qualityApi";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 const ACTOR_STORAGE_KEY = "fomentos_actor_id";
@@ -162,6 +163,11 @@ export default function App() {
   const [skillsError, setSkillsError] = useState("");
   const [runBySkill, setRunBySkill] = useState({});
   const [runningSkillID, setRunningSkillID] = useState("");
+  const [adminApiKey, setAdminApiKey] = useState(() => localStorage.getItem("fomento_admin_api_key") || "");
+  const [quality, setQuality] = useState(null);
+  const [qualityLoading, setQualityLoading] = useState(false);
+  const [qualityError, setQualityError] = useState("");
+  const [qualityRecentLimit, setQualityRecentLimit] = useState(20);
   const [ctxMeta, setCtxMeta] = useState(null);
   const [uploading, setUploading] = useState(false);
   const fr = useRef(null);
@@ -458,6 +464,24 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
     }
   };
 
+  const loadQualitySummary = async () => {
+    if (!adminApiKey.trim()) {
+      setQualityError("Informe a API key admin para carregar a telemetria.");
+      return;
+    }
+    setQualityLoading(true);
+    setQualityError("");
+    try {
+      localStorage.setItem("fomento_admin_api_key", adminApiKey.trim());
+      const out = await fetchQualitySummary(adminApiKey.trim(), qualityRecentLimit);
+      setQuality(out);
+    } catch {
+      setQualityError("Falha ao carregar telemetria. Verifique a API key.");
+    } finally {
+      setQualityLoading(false);
+    }
+  };
+
   const Logo = ({ size = 40 }) => (
     <div style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }} onClick={() => setPg("landing")}>
       <div style={{ width: size, height: size, borderRadius: "50%", background: "linear-gradient(135deg, #00E676, #00C853)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 24px rgba(0,230,118,0.2)" }}>
@@ -560,7 +584,7 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
               <p style={{ fontSize: 13, color: "#555" }}>3 aplicações ativas · 3 notificações pendentes</p>
             </div>
             <div style={{ display: "flex", gap: 0, marginBottom: 32, borderBottom: "1px solid rgba(255,255,255,0.05)", overflowX: "auto" }}>
-              {[["apps", "Aplicações"], ["round", "Roundhouse AI"], ["skills", "Skills"], ["notifs", "Notificações"], ["config", "Config"]].map(([k, l]) => <button key={k} onClick={() => setDt(k)} style={{ background: "none", border: "none", borderBottom: "2px solid " + (dt === k ? "#00E676" : "transparent"), padding: "10px 20px", color: dt === k ? "#fff" : "#555", fontSize: 13, cursor: "pointer", fontWeight: dt === k ? 500 : 400, transition: "all 0.3s", whiteSpace: "nowrap" }}>{l}</button>)}
+              {[["apps", "Aplicações"], ["round", "Roundhouse AI"], ["skills", "Skills"], ["qa", "Qualidade IA"], ["notifs", "Notificações"], ["config", "Config"]].map(([k, l]) => <button key={k} onClick={() => setDt(k)} style={{ background: "none", border: "none", borderBottom: "2px solid " + (dt === k ? "#00E676" : "transparent"), padding: "10px 20px", color: dt === k ? "#fff" : "#555", fontSize: 13, cursor: "pointer", fontWeight: dt === k ? 500 : 400, transition: "all 0.3s", whiteSpace: "nowrap" }}>{l}</button>)}
             </div>
 
             {dt === "apps" && <div style={{ display: "flex", flexDirection: "column", gap: 12, animation: "slideUp 0.3s ease" }}>
@@ -681,6 +705,58 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
                 </div>
               ))}
               {!skillsLoading && skills.length === 0 && <p style={{ fontSize: 12, color: "#666" }}>Nenhuma skill criada ainda.</p>}
+            </div>}
+
+            {dt === "qa" && <div style={{ animation: "slideUp 0.3s ease", display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 14, padding: 20 }}>
+                <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Telemetria de Qualidade da IA</h3>
+                <p style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>Painel interno com score médio, taxa de rewrite e eventos recentes dos endpoints de IA.</p>
+                {qualityError && <p style={{ fontSize: 12, color: "#ff6b6b", marginBottom: 10 }}>{qualityError}</p>}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 8 }}>
+                  <input type="password" value={adminApiKey} onChange={e => setAdminApiKey(e.target.value)} placeholder="X-API-Key admin" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 12 }} />
+                  <input type="number" min={1} max={200} value={qualityRecentLimit} onChange={e => setQualityRecentLimit(Math.max(1, Math.min(200, Number(e.target.value) || 20)))} placeholder="Recent limit" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 12 }} />
+                  <button onClick={loadQualitySummary} style={{ background: "#00E676", border: "none", borderRadius: 8, padding: "8px 12px", color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{qualityLoading ? "Carregando..." : "Atualizar Telemetria"}</button>
+                </div>
+              </div>
+
+              {quality && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10 }}>
+                <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 12, padding: "14px 16px" }}><p style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>Eventos</p><p style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700 }}>{quality.total_events}</p></div>
+                <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 12, padding: "14px 16px" }}><p style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>Threshold</p><p style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700 }}>{quality.threshold}</p></div>
+                <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 12, padding: "14px 16px" }}><p style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>Endpoints</p><p style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700 }}>{quality.endpoints?.length || 0}</p></div>
+                <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 12, padding: "14px 16px" }}><p style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>Recentes</p><p style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700 }}>{quality.recent?.length || 0}</p></div>
+              </div>}
+
+              {quality && <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 14, padding: 16 }}>
+                <h4 style={{ fontFamily: "'Syne', sans-serif", fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Resumo por Endpoint</h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {(quality.endpoints || []).map((ep) => (
+                    <div key={ep.endpoint} style={{ border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: "10px 12px", background: "rgba(255,255,255,0.01)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 4 }}>
+                        <span style={{ fontSize: 12, color: "#ddd" }}>{ep.endpoint}</span>
+                        <span style={{ fontSize: 12, color: "#8eddb0" }}>avg {ep.average_score}</span>
+                      </div>
+                      <p style={{ fontSize: 11, color: "#777" }}>total {ep.total} · below {ep.below_threshold} · rewrites {ep.rewrites} · rate {Number(ep.rewrite_rate || 0) * 100}%</p>
+                    </div>
+                  ))}
+                  {(quality.endpoints || []).length === 0 && <p style={{ fontSize: 12, color: "#666" }}>Sem dados ainda.</p>}
+                </div>
+              </div>}
+
+              {quality && <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 14, padding: 16 }}>
+                <h4 style={{ fontFamily: "'Syne', sans-serif", fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Eventos Recentes</h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {(quality.recent || []).map((ev) => (
+                    <div key={ev.id} style={{ border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: "10px 12px", background: "rgba(255,255,255,0.01)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 4 }}>
+                        <span style={{ fontSize: 12, color: "#ddd" }}>{ev.endpoint}</span>
+                        <span style={{ fontSize: 12, color: Number(ev.score) >= Number(quality.threshold) ? "#00E676" : "#F5A623" }}>{ev.score}/{quality.threshold}</span>
+                      </div>
+                      <p style={{ fontSize: 11, color: "#777" }}>rewrite: {ev.rewritten ? "sim" : "não"} · faltou: {(ev.missing || []).length ? ev.missing.join(", ") : "ok"} · {new Date(ev.created_at).toLocaleString("pt-BR")}</p>
+                    </div>
+                  ))}
+                  {(quality.recent || []).length === 0 && <p style={{ fontSize: 12, color: "#666" }}>Sem eventos recentes.</p>}
+                </div>
+              </div>}
             </div>}
 
             {dt === "notifs" && <div style={{ display: "flex", flexDirection: "column", gap: 8, animation: "slideUp 0.3s ease" }}>
