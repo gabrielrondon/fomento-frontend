@@ -301,6 +301,7 @@ export default function App() {
 
   const tog = (id) => setSel(p => p.includes(id) ? p.filter(x => x !== id) : p.length >= 3 ? p : [...p, id]);
   const sorted = [...opps].sort((a, b) => b.match - a.match);
+  const rankingNote = aiClassNote || `Priorizamos ${sorted.slice(0, 2).map((o) => o.name).join(" e ")} por maior aderência prática ao contexto enviado e melhor viabilidade de submissão.`;
   const ps = { opacity: fi ? 1 : 0, transform: fi ? "translateY(0)" : "translateY(12px)", transition: "all 0.6s cubic-bezier(0.16,1,0.3,1)" };
 
   const runAdvisor = async () => {
@@ -526,7 +527,7 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
           </div>}
           <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12 }}>
             <p style={{ fontSize: 11, color: "#444", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 }}>{sorted.length} oportunidades detectadas — selecione até 3</p>
-            {aiClassNote && <div style={{ fontSize: 12, color: "#7bcf9a", background: "rgba(0,230,118,0.05)", border: "1px solid rgba(0,230,118,0.15)", borderRadius: 10, padding: "10px 12px", marginBottom: 8 }}>{aiClassNote}</div>}
+            <div style={{ fontSize: 12, color: "#7bcf9a", background: "rgba(0,230,118,0.05)", border: "1px solid rgba(0,230,118,0.15)", borderRadius: 10, padding: "10px 12px", marginBottom: 8 }}>{rankingNote}</div>
             {sorted.map((o, i) => <div key={o.id} style={{ animation: "slideUp 0.5s ease " + (i * 0.1) + "s both" }}><OppCard opp={o} selected={sel.includes(o.id)} onToggle={tog} disabled={sel.length >= 3 && !sel.includes(o.id)} /></div>)}
           </div>
         </div>
