@@ -146,6 +146,13 @@ export default function App() {
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
+  const [skillName, setSkillName] = useState("");
+  const [skillProject, setSkillProject] = useState("");
+  const [skillEdital, setSkillEdital] = useState("");
+  const [skills, setSkills] = useState([
+    { id: "skill-1", name: "Monitor FINEP Inovacred", project: "Projeto Agro IA", edital: "FINEP Inovacred 4.0", status: "Ativa", notifications: true },
+    { id: "skill-2", name: "Aplicação BNDES Clima", project: "Projeto Carbono", edital: "BNDES Fundo Clima", status: "Rascunho", notifications: true },
+  ]);
   const [ctxMeta, setCtxMeta] = useState(null);
   const [uploading, setUploading] = useState(false);
   const fr = useRef(null);
@@ -332,6 +339,39 @@ export default function App() {
     }
   };
 
+  const buildSkillMarkdown = (s) => `# Skill ${s.name}
+
+## Objetivo
+Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
+
+## Instruções Operacionais
+- Monitorar atualizações de prazo e requisitos do edital diariamente.
+- Notificar mudanças críticas de documentação e critérios.
+- Sugerir melhorias incrementais para elevar aderência da aplicação.
+- Acionar o agente RoundHound para executar próximos passos do pipeline.
+`;
+
+  const downloadSkill = (s) => {
+    const blob = new Blob([buildSkillMarkdown(s)], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${String(s.name || "skill").toLowerCase().replace(/\s+/g, "-")}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const createSkill = () => {
+    const name = skillName.trim();
+    const project = skillProject.trim();
+    const edital = skillEdital.trim();
+    if (!name || !project || !edital) return;
+    setSkills((prev) => [{ id: `skill-${Date.now()}`, name, project, edital, status: "Rascunho", notifications: true }, ...prev]);
+    setSkillName("");
+    setSkillProject("");
+    setSkillEdital("");
+  };
+
   const Logo = ({ size = 40 }) => (
     <div style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }} onClick={() => setPg("landing")}>
       <div style={{ width: size, height: size, borderRadius: "50%", background: "linear-gradient(135deg, #00E676, #00C853)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 24px rgba(0,230,118,0.2)" }}>
@@ -434,7 +474,7 @@ export default function App() {
               <p style={{ fontSize: 13, color: "#555" }}>3 aplicações ativas · 3 notificações pendentes</p>
             </div>
             <div style={{ display: "flex", gap: 0, marginBottom: 32, borderBottom: "1px solid rgba(255,255,255,0.05)", overflowX: "auto" }}>
-              {[["apps", "Aplicações"], ["round", "Roundhouse AI"], ["notifs", "Notificações"], ["config", "Config"]].map(([k, l]) => <button key={k} onClick={() => setDt(k)} style={{ background: "none", border: "none", borderBottom: "2px solid " + (dt === k ? "#00E676" : "transparent"), padding: "10px 20px", color: dt === k ? "#fff" : "#555", fontSize: 13, cursor: "pointer", fontWeight: dt === k ? 500 : 400, transition: "all 0.3s", whiteSpace: "nowrap" }}>{l}</button>)}
+              {[["apps", "Aplicações"], ["round", "Roundhouse AI"], ["skills", "Skills"], ["notifs", "Notificações"], ["config", "Config"]].map(([k, l]) => <button key={k} onClick={() => setDt(k)} style={{ background: "none", border: "none", borderBottom: "2px solid " + (dt === k ? "#00E676" : "transparent"), padding: "10px 20px", color: dt === k ? "#fff" : "#555", fontSize: 13, cursor: "pointer", fontWeight: dt === k ? 500 : 400, transition: "all 0.3s", whiteSpace: "nowrap" }}>{l}</button>)}
             </div>
 
             {dt === "apps" && <div style={{ display: "flex", flexDirection: "column", gap: 12, animation: "slideUp 0.3s ease" }}>
@@ -517,6 +557,38 @@ export default function App() {
                   <button disabled={chatLoading || !chatInput.trim()} onClick={sendConsultorChat} style={{ background: "#00E676", opacity: chatLoading || !chatInput.trim() ? 0.55 : 1, border: "none", borderRadius: 10, padding: "0 16px", cursor: chatLoading || !chatInput.trim() ? "default" : "pointer", display: "flex", alignItems: "center" }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>
                 </div>
               </div>
+            </div>}
+
+            {dt === "skills" && <div style={{ animation: "slideUp 0.3s ease", display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 14, padding: 20 }}>
+                <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Criar Skill do Cliente</h3>
+                <p style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>Crie skills para projeto e edital com notificações e acionamento do agente RoundHound.</p>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 8 }}>
+                  <input value={skillName} onChange={e => setSkillName(e.target.value)} placeholder="Nome da Skill" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 12 }} />
+                  <input value={skillProject} onChange={e => setSkillProject(e.target.value)} placeholder="Projeto" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 12 }} />
+                  <input value={skillEdital} onChange={e => setSkillEdital(e.target.value)} placeholder="Edital/Aplicação" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 12 }} />
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                  <button onClick={createSkill} style={{ background: "#00E676", border: "none", borderRadius: 8, padding: "8px 12px", color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Salvar Skill</button>
+                  <button onClick={() => downloadSkill({ name: skillName || "nova-skill", project: skillProject || "projeto", edital: skillEdital || "edital" })} style={{ background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "8px 12px", color: "#bbb", fontSize: 12, cursor: "pointer" }}>Baixar .md</button>
+                </div>
+              </div>
+
+              {skills.map((s) => (
+                <div key={s.id} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 14, padding: "16px 18px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                    <h4 style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 700 }}>{s.name}</h4>
+                    <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 999, background: s.status === "Ativa" ? "rgba(0,230,118,0.12)" : "rgba(245,166,35,0.12)", color: s.status === "Ativa" ? "#00E676" : "#F5A623", textTransform: "uppercase", letterSpacing: 1 }}>{s.status}</span>
+                  </div>
+                  <p style={{ fontSize: 12, color: "#777", marginBottom: 10 }}>{s.project} · {s.edital}</p>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button onClick={() => downloadSkill(s)} style={{ background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "7px 10px", color: "#bbb", fontSize: 12, cursor: "pointer" }}>Baixar</button>
+                    <button onClick={() => setStripe(true)} style={{ background: "#F5A623", border: "none", borderRadius: 8, padding: "7px 10px", color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Rodar no RoundHound Cloud (Pro)</button>
+                    <button onClick={() => setStripe(true)} style={{ background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "7px 10px", color: "#bbb", fontSize: 12, cursor: "pointer" }}>Ligar no Agente RoundHound</button>
+                  </div>
+                  <p style={{ fontSize: 11, color: "#666", marginTop: 8 }}>Notificações de edital e melhorias: <strong style={{ color: "#a8b6ad" }}>{s.notifications ? "ativas" : "inativas"}</strong></p>
+                </div>
+              ))}
             </div>}
 
             {dt === "notifs" && <div style={{ display: "flex", flexDirection: "column", gap: 8, animation: "slideUp 0.3s ease" }}>
