@@ -3,6 +3,7 @@ import {
   createSkill as createSkillAPI,
   deleteSkill as deleteSkillAPI,
   downloadSkillMarkdown,
+  ensureProject,
   getSkillRecommendation,
   listProjects,
   listSkills,
@@ -189,6 +190,8 @@ export default function App() {
   const [composerIntent, setComposerIntent] = useState("nova_busca");
   const [consultorStarted, setConsultorStarted] = useState(false);
   const [needsWizard, setNeedsWizard] = useState(false);
+  const [projectNameDraft, setProjectNameDraft] = useState("");
+  const [projectNameSaving, setProjectNameSaving] = useState(false);
   const fr = useRef(null);
 
   useEffect(() => { setFi(false); const t = setTimeout(() => setFi(true), 50); return () => clearTimeout(t); }, [pg]);
@@ -201,6 +204,7 @@ export default function App() {
         setCtxMeta(ctx);
         if (ctx?.project_context) setTxt(ctx.project_context);
         if (ctx?.document?.file_name) setFn(ctx.document.file_name);
+        if (ctx?.project_context?.trim()) setConsultorStarted(true);
       } catch {
         // noop
       }
@@ -398,6 +402,13 @@ export default function App() {
     if (!data) return false;
     const joined = `${data.overall_assessment || ""} ${(data.gaps || []).join(" ")} ${(data.next_steps || []).join(" ")}`.toLowerCase();
     return joined.includes("contexto insuficiente") || joined.includes("faltam itens-chave");
+  };
+
+  const isAutoProjectName = (name) => {
+    const v = String(name || "").trim();
+    if (!v) return true;
+    if (v.toLowerCase() === "projeto sem nome") return true;
+    return v.includes("_");
   };
 
   const runAdvisor = async () => {
@@ -608,6 +619,8 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
   };
 
   const wizardActive = consultorStarted && !composerOpen && needsWizard;
+  const selectedProject = projects.find((p) => p.id === selectedProjectID) || null;
+  const shouldAskProjectName = consultorStarted && !!selectedProject && isAutoProjectName(selectedProject.name);
 
   const saveBriefing = async () => {
     const sector = briefingSector.trim();
@@ -641,6 +654,40 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
       setBriefingError("Falha ao salvar briefing.");
     } finally {
       setBriefingSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    if (dt === "round" && consultorStarted && !advisor && !advisorLoading && !composerOpen) {
+      runAdvisor();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dt, consultorStarted, advisor, advisorLoading, composerOpen]);
+
+  useEffect(() => {
+    const current = projects.find((p) => p.id === selectedProjectID);
+    if (current && isAutoProjectName(current.name) && !projectNameDraft.trim()) {
+      setProjectNameDraft(String(current.name).replace(/[_-]+/g, " ").trim());
+    }
+  }, [projects, selectedProjectID, projectNameDraft]);
+
+  const saveProjectName = async () => {
+    const name = projectNameDraft.trim();
+    const context = (txt.trim() || ctxMeta?.project_context || "").trim();
+    if (!name || !context) return;
+    setProjectNameSaving(true);
+    try {
+      const saved = await ensureProject(actorId, {
+        project_name: name,
+        project_context: context,
+        document_name: ctxMeta?.document?.file_name || fn || "",
+      });
+      const items = await listProjects(actorId);
+      setProjects(items);
+      setSelectedProjectID(saved.id);
+      localStorage.setItem("fomento_selected_project_id", saved.id);
+    } finally {
+      setProjectNameSaving(false);
     }
   };
 
@@ -827,6 +874,20 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
                 {ctxMeta?.document?.file_name && (
                   <div style={{ fontSize: 12, color: "#8ce6b0", marginBottom: 12, padding: "8px 10px", borderRadius: 8, background: "rgba(0,230,118,0.05)", border: "1px solid rgba(0,230,118,0.12)" }}>
                     Documento ativo: <strong>{ctxMeta.document.file_name}</strong>
+                  </div>
+                )}
+                {shouldAskProjectName && (
+                  <div style={{ marginBottom: 12, padding: "10px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.02)" }}>
+                    <p style={{ fontSize: 12, color: "#ddd", marginBottom: 8 }}>Qual nome você quer para este projeto?</p>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <input
+                        value={projectNameDraft}
+                        onChange={e => setProjectNameDraft(e.target.value)}
+                        placeholder="Ex.: Transformação IA em Consultoria"
+                        style={{ flex: 1, minWidth: 220, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 12 }}
+                      />
+                      <button onClick={saveProjectName} disabled={projectNameSaving || !projectNameDraft.trim()} style={{ background: "#00E676", opacity: projectNameSaving || !projectNameDraft.trim() ? 0.6 : 1, border: "none", borderRadius: 8, padding: "8px 12px", color: "#000", fontSize: 12, fontWeight: 700, cursor: projectNameSaving || !projectNameDraft.trim() ? "default" : "pointer" }}>{projectNameSaving ? "Salvando..." : "Salvar Nome"}</button>
+                    </div>
                   </div>
                 )}
                 {composerOpen && composerIntent === "reanalisar" && (

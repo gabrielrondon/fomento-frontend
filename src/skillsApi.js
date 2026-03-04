@@ -71,6 +71,21 @@ export async function listProjects(actorId) {
   return data.items || [];
 }
 
+export async function ensureProject(actorId, payload = {}) {
+  const res = await fetch(`${API_BASE}/v1/projects/ensure`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Actor-ID": actorId },
+    body: JSON.stringify({
+      actor_id: actorId,
+      project_name: payload.project_name || "",
+      project_context: payload.project_context || "",
+      document_name: payload.document_name || "",
+    }),
+  });
+  if (!res.ok) throw new Error("project_ensure_failed");
+  return res.json();
+}
+
 export async function getSkillRecommendation(actorId, projectId) {
   const res = await fetch(`${API_BASE}/v1/skills/recommendations?actor_id=${encodeURIComponent(actorId)}&project_id=${encodeURIComponent(projectId)}`, {
     headers: { "X-Actor-ID": actorId },
