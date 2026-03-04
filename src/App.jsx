@@ -771,7 +771,7 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
               {[["apps", "Aplicações"], ["round", "Roundhouse AI"], ["skills", "Skills"], ["qa", "Qualidade IA"], ["notifs", "Notificações"], ["config", "Config"]].map(([k, l]) => <button key={k} onClick={() => setDt(k)} style={{ background: "none", border: "none", borderBottom: "2px solid " + (dt === k ? "#00E676" : "transparent"), padding: "10px 20px", color: dt === k ? "#fff" : "#555", fontSize: 13, cursor: "pointer", fontWeight: dt === k ? 500 : 400, transition: "all 0.3s", whiteSpace: "nowrap" }}>{l}</button>)}
             </div>
 
-            {composerOpen && (
+            {composerOpen && composerIntent === "nova_busca" && (
               <div
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
@@ -836,6 +836,43 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
                 <div style={{ fontSize: 12, color: "#88929a", marginBottom: 12, padding: "8px 10px", borderRadius: 8, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
                   Para respostas mais críticas e menos genéricas, inclua no contexto: <strong>setor</strong>, <strong>objetivo</strong>, <strong>estágio</strong> e <strong>prazo/orçamento</strong>.
                 </div>
+                {composerOpen && composerIntent === "reanalisar" && (
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    style={{ width: "100%", position: "relative", marginBottom: 12 }}
+                  >
+                    {dragOver && (
+                      <div style={{ position: "absolute", inset: 0, borderRadius: 14, border: "1px dashed rgba(0,230,118,0.6)", background: "rgba(0,230,118,0.08)", zIndex: 5, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+                        <span style={{ fontSize: 13, color: "#8ce6b0", letterSpacing: 0.4 }}>Solte o arquivo aqui para anexar</span>
+                      </div>
+                    )}
+                    <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid " + (dragOver ? "rgba(0,230,118,0.45)" : "rgba(255,255,255,0.08)"), borderRadius: 14, padding: "16px 18px" }}>
+                      <p style={{ fontSize: 12, color: "#7f8b92", marginBottom: 8 }}>
+                        Atualize contexto/arquivo antes da reanálise.
+                      </p>
+                      <textarea
+                        value={txt}
+                        onChange={e => setTxt(e.target.value)}
+                        placeholder="Descreva seu projeto — setor, tecnologia, estágio, objetivo…"
+                        rows={3}
+                        style={{ width: "100%", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontSize: 13, resize: "none", lineHeight: 1.6 }}
+                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <input type="file" ref={fr} onChange={e => handlePickedFile(e.target.files?.[0])} style={{ display: "none" }} accept=".pdf,.doc,.docx,.txt" />
+                          <button onClick={() => fr.current?.click()} disabled={uploading} style={{ background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "8px 12px", color: "#bbb", fontSize: 12, cursor: uploading ? "default" : "pointer", opacity: uploading ? 0.7 : 1 }}>{uploading ? "Enviando..." : "Upload"}</button>
+                          {fn && <span style={{ fontSize: 11, color: "#b9d9c7", background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "4px 8px" }}>{fn}</span>}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <button onClick={() => setComposerOpen(false)} style={{ background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "8px 12px", color: "#bbb", fontSize: 12, cursor: "pointer" }}>Cancelar</button>
+                          <button onClick={saveComposer} style={{ background: "#00E676", border: "none", borderRadius: 8, padding: "8px 12px", color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Salvar e Reanalisar</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {!hasMinimumContext(txt.trim() || ctxMeta?.project_context || "") && (
                   <div style={{ marginBottom: 12, padding: "10px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.02)" }}>
                     <p style={{ fontSize: 12, color: "#ddd", marginBottom: 8 }}>Wizard de Contexto (obrigatório para análise crítica)</p>
