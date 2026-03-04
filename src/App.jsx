@@ -168,6 +168,13 @@ export default function App() {
   const [qualityLoading, setQualityLoading] = useState(false);
   const [qualityError, setQualityError] = useState("");
   const [qualityRecentLimit, setQualityRecentLimit] = useState(20);
+  const [briefingSector, setBriefingSector] = useState("");
+  const [briefingGoal, setBriefingGoal] = useState("");
+  const [briefingStage, setBriefingStage] = useState("mvp");
+  const [briefingTimeline, setBriefingTimeline] = useState("");
+  const [briefingBudget, setBriefingBudget] = useState("");
+  const [briefingError, setBriefingError] = useState("");
+  const [briefingSaving, setBriefingSaving] = useState(false);
   const [ctxMeta, setCtxMeta] = useState(null);
   const [uploading, setUploading] = useState(false);
   const fr = useRef(null);
@@ -314,6 +321,10 @@ export default function App() {
     const selectedOpps = sorted.filter(o => sel.includes(o.id)).map(o => o.name);
     const selectedSources = [...new Set(sorted.filter(o => sel.includes(o.id)).map(o => o.entity.split("/")[0].trim().toUpperCase()))];
     const context = txt.trim() || ctxMeta?.project_context || `Projeto baseado nas oportunidades selecionadas: ${selectedOpps.join(", ")}`;
+    if (!hasMinimumContext(context)) {
+      setBriefingError("Complete o briefing para liberar análise crítica.");
+      return;
+    }
     setAdvisorLoading(true);
     try {
       const res = await fetch(`${API_BASE}/v1/ai/project-advisor`, {
@@ -346,6 +357,10 @@ export default function App() {
     const selectedOpps = sorted.filter(o => sel.includes(o.id)).map(o => o.name);
     const selectedSources = [...new Set(sorted.filter(o => sel.includes(o.id)).map(o => o.entity.split("/")[0].trim().toUpperCase()))];
     const context = txt.trim() || ctxMeta?.project_context || `Projeto baseado nas oportunidades selecionadas: ${selectedOpps.join(", ")}`;
+    if (!hasMinimumContext(context)) {
+      setBriefingError("Complete o briefing para liberar o consultor.");
+      return;
+    }
 
     setChatMessages((prev) => [...prev, { role: "user", text: message }]);
     setChatInput("");
@@ -461,6 +476,50 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
       setSkills((prev) => prev.filter((s) => s.id !== skill.id));
     } catch {
       setSkillsError("Falha ao remover skill.");
+    }
+  };
+
+  const hasMinimumContext = (text) => {
+    const normalized = String(text || "").trim().toLowerCase();
+    if (normalized.length < 90) return false;
+    const words = normalized.split(/\s+/).filter(Boolean);
+    if (words.length < 14) return false;
+    const hasSector = /(setor|agro|saude|energia|industria|fintech|edtech|clima|logistica)/i.test(normalized);
+    const hasGoal = /(objetivo|meta|resolver|problema|impacto|resultado)/i.test(normalized);
+    const hasStage = /(estagio|estágio|mvp|piloto|tracao|tração|escala|receita)/i.test(normalized);
+    const hasTimeOrBudget = /(prazo|dias|seman|mes|m[eê]s|ano|r\$|orcamento|orçamento|mil|mi)/i.test(normalized);
+    return hasSector && hasGoal && hasStage && hasTimeOrBudget;
+  };
+
+  const saveBriefing = async () => {
+    const sector = briefingSector.trim();
+    const goal = briefingGoal.trim();
+    const stage = briefingStage.trim();
+    const timeline = briefingTimeline.trim();
+    const budget = briefingBudget.trim();
+    if (!sector || !goal || !stage || !timeline || !budget) {
+      setBriefingError("Preencha os 5 campos do briefing.");
+      return;
+    }
+    setBriefingSaving(true);
+    setBriefingError("");
+    try {
+      const current = (ctxMeta?.project_context || txt || "").trim();
+      const briefing = [
+        "Resumo Estruturado do Projeto",
+        `Setor: ${sector}`,
+        `Objetivo: ${goal}`,
+        `Estágio: ${stage}`,
+        `Prazo: ${timeline}`,
+        `Orçamento/Ticket: ${budget}`,
+      ].join("\n");
+      const merged = current ? `${briefing}\n\nContexto adicional:\n${current}` : briefing;
+      await persistProjectContext(merged);
+      setTxt(merged);
+    } catch {
+      setBriefingError("Falha ao salvar briefing.");
+    } finally {
+      setBriefingSaving(false);
     }
   };
 
@@ -612,6 +671,28 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
                 <div style={{ fontSize: 12, color: "#88929a", marginBottom: 12, padding: "8px 10px", borderRadius: 8, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
                   Para respostas mais críticas e menos genéricas, inclua no contexto: <strong>setor</strong>, <strong>objetivo</strong>, <strong>estágio</strong> e <strong>prazo/orçamento</strong>.
                 </div>
+                {!hasMinimumContext(txt.trim() || ctxMeta?.project_context || "") && (
+                  <div style={{ marginBottom: 12, padding: "10px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.02)" }}>
+                    <p style={{ fontSize: 12, color: "#ddd", marginBottom: 8 }}>Wizard de Contexto (obrigatório para análise crítica)</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 8 }}>
+                      <input value={briefingSector} onChange={e => setBriefingSector(e.target.value)} placeholder="Setor (ex.: AgTech)" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 12 }} />
+                      <input value={briefingGoal} onChange={e => setBriefingGoal(e.target.value)} placeholder="Objetivo do projeto" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 12 }} />
+                      <select value={briefingStage} onChange={e => setBriefingStage(e.target.value)} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 12 }}>
+                        <option value="ideia">Ideia</option>
+                        <option value="mvp">MVP</option>
+                        <option value="piloto">Piloto</option>
+                        <option value="tracao">Tração</option>
+                        <option value="escala">Escala</option>
+                      </select>
+                      <input value={briefingTimeline} onChange={e => setBriefingTimeline(e.target.value)} placeholder="Prazo (ex.: submissão em 45 dias)" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 12 }} />
+                      <input value={briefingBudget} onChange={e => setBriefingBudget(e.target.value)} placeholder="Orçamento/Ticket (ex.: R$ 1,5M)" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 12, gridColumn: "1 / -1" }} />
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+                      <button onClick={saveBriefing} style={{ background: "#00E676", border: "none", borderRadius: 8, padding: "7px 10px", color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{briefingSaving ? "Salvando..." : "Salvar Briefing"}</button>
+                      {briefingError && <span style={{ fontSize: 11, color: "#ff7f7f" }}>{briefingError}</span>}
+                    </div>
+                  </div>
+                )}
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16, marginBottom: 20 }}>
                   {advisor ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
