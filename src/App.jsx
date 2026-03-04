@@ -188,6 +188,7 @@ export default function App() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerIntent, setComposerIntent] = useState("nova_busca");
   const [consultorStarted, setConsultorStarted] = useState(false);
+  const [needsWizard, setNeedsWizard] = useState(false);
   const fr = useRef(null);
 
   useEffect(() => { setFi(false); const t = setTimeout(() => setFi(true), 50); return () => clearTimeout(t); }, [pg]);
@@ -393,14 +394,16 @@ export default function App() {
   const rankingNote = aiClassNote || `Priorizamos ${sorted.slice(0, 2).map((o) => o.name).join(" e ")} por maior aderência prática ao contexto enviado e melhor viabilidade de submissão.`;
   const ps = { opacity: fi ? 1 : 0, transform: fi ? "translateY(0)" : "translateY(12px)", transition: "all 0.6s cubic-bezier(0.16,1,0.3,1)" };
 
+  const isAdvisorInsufficient = (data) => {
+    if (!data) return false;
+    const joined = `${data.overall_assessment || ""} ${(data.gaps || []).join(" ")} ${(data.next_steps || []).join(" ")}`.toLowerCase();
+    return joined.includes("contexto insuficiente") || joined.includes("faltam itens-chave");
+  };
+
   const runAdvisor = async () => {
     const selectedOpps = sorted.filter(o => sel.includes(o.id)).map(o => o.name);
     const selectedSources = [...new Set(sorted.filter(o => sel.includes(o.id)).map(o => o.entity.split("/")[0].trim().toUpperCase()))];
     const context = txt.trim() || ctxMeta?.project_context || `Projeto baseado nas oportunidades selecionadas: ${selectedOpps.join(", ")}`;
-    if (!hasMinimumContext(context)) {
-      setBriefingError("Complete o briefing para liberar análise crítica.");
-      return;
-    }
     setAdvisorLoading(true);
     try {
       const res = await fetch(`${API_BASE}/v1/ai/project-advisor`, {
@@ -415,6 +418,7 @@ export default function App() {
       if (!res.ok) throw new Error("ai_project_advisor_failed");
       const data = await res.json();
       setAdvisor(data);
+      setNeedsWizard(isAdvisorInsufficient(data));
     } catch {
       setAdvisor({
         overall_assessment: "Não foi possível gerar análise avançada agora. Verifique o backend e tente novamente.",
@@ -422,6 +426,7 @@ export default function App() {
         gaps: [],
         next_steps: ["Tentar novamente em alguns segundos."],
       });
+      setNeedsWizard(false);
     } finally {
       setAdvisorLoading(false);
     }
@@ -453,10 +458,6 @@ export default function App() {
     const selectedOpps = sorted.filter(o => sel.includes(o.id)).map(o => o.name);
     const selectedSources = [...new Set(sorted.filter(o => sel.includes(o.id)).map(o => o.entity.split("/")[0].trim().toUpperCase()))];
     const context = txt.trim() || ctxMeta?.project_context || `Projeto baseado nas oportunidades selecionadas: ${selectedOpps.join(", ")}`;
-    if (!hasMinimumContext(context)) {
-      setBriefingError("Complete o briefing para liberar o consultor.");
-      return;
-    }
 
     setChatMessages((prev) => [...prev, { role: "user", text: message }]);
     setChatInput("");
@@ -606,20 +607,7 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
     }
   };
 
-  const hasMinimumContext = (text) => {
-    const normalized = String(text || "").trim().toLowerCase();
-    if (normalized.length < 90) return false;
-    const words = normalized.split(/\s+/).filter(Boolean);
-    if (words.length < 14) return false;
-    const hasSector = /(setor|agro|saude|energia|industria|fintech|edtech|clima|logistica)/i.test(normalized);
-    const hasGoal = /(objetivo|meta|resolver|problema|impacto|resultado)/i.test(normalized);
-    const hasStage = /(estagio|estágio|mvp|piloto|tracao|tração|escala|receita)/i.test(normalized);
-    const hasTimeOrBudget = /(prazo|dias|seman|mes|m[eê]s|ano|r\$|orcamento|orçamento|mil|mi)/i.test(normalized);
-    return hasSector && hasGoal && hasStage && hasTimeOrBudget;
-  };
-
-  const consultorContext = (txt.trim() || ctxMeta?.project_context || "").trim();
-  const wizardActive = consultorStarted && !composerOpen && !hasMinimumContext(consultorContext);
+  const wizardActive = consultorStarted && !composerOpen && needsWizard;
 
   const saveBriefing = async () => {
     const sector = briefingSector.trim();
@@ -646,6 +634,9 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
       const merged = current ? `${briefing}\n\nContexto adicional:\n${current}` : briefing;
       await persistProjectContext(merged);
       setTxt(merged);
+      setNeedsWizard(false);
+      setConsultorStarted(true);
+      await runAdvisor();
     } catch {
       setBriefingError("Falha ao salvar briefing.");
     } finally {
@@ -838,9 +829,6 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
                     Documento ativo: <strong>{ctxMeta.document.file_name}</strong>
                   </div>
                 )}
-                <div style={{ fontSize: 12, color: "#88929a", marginBottom: 12, padding: "8px 10px", borderRadius: 8, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                  Para respostas mais críticas e menos genéricas, inclua no contexto: <strong>setor</strong>, <strong>objetivo</strong>, <strong>estágio</strong> e <strong>prazo/orçamento</strong>.
-                </div>
                 {composerOpen && composerIntent === "reanalisar" && (
                   <div
                     onDragOver={handleDragOver}
