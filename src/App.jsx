@@ -609,6 +609,9 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
                     Documento ativo: <strong>{ctxMeta.document.file_name}</strong>
                   </div>
                 )}
+                <div style={{ fontSize: 12, color: "#88929a", marginBottom: 12, padding: "8px 10px", borderRadius: 8, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  Para respostas mais críticas e menos genéricas, inclua no contexto: <strong>setor</strong>, <strong>objetivo</strong>, <strong>estágio</strong> e <strong>prazo/orçamento</strong>.
+                </div>
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16, marginBottom: 20 }}>
                   {advisor ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
