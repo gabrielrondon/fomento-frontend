@@ -1,4 +1,12 @@
 import { useState, useEffect, useRef } from "react";
+import {
+  createSkill as createSkillAPI,
+  deleteSkill as deleteSkillAPI,
+  downloadSkillMarkdown,
+  listSkills,
+  runSkill as runSkillAPI,
+  updateSkill as updateSkillAPI,
+} from "./skillsApi";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 const ACTOR_STORAGE_KEY = "fomentos_actor_id";
@@ -149,10 +157,11 @@ export default function App() {
   const [skillName, setSkillName] = useState("");
   const [skillProject, setSkillProject] = useState("");
   const [skillEdital, setSkillEdital] = useState("");
-  const [skills, setSkills] = useState([
-    { id: "skill-1", name: "Monitor FINEP Inovacred", project: "Projeto Agro IA", edital: "FINEP Inovacred 4.0", status: "Ativa", notifications: true },
-    { id: "skill-2", name: "Aplicação BNDES Clima", project: "Projeto Carbono", edital: "BNDES Fundo Clima", status: "Rascunho", notifications: true },
-  ]);
+  const [skills, setSkills] = useState([]);
+  const [skillsLoading, setSkillsLoading] = useState(false);
+  const [skillsError, setSkillsError] = useState("");
+  const [runBySkill, setRunBySkill] = useState({});
+  const [runningSkillID, setRunningSkillID] = useState("");
   const [ctxMeta, setCtxMeta] = useState(null);
   const [uploading, setUploading] = useState(false);
   const fr = useRef(null);
@@ -169,6 +178,22 @@ export default function App() {
         if (ctx?.document?.file_name) setFn(ctx.document.file_name);
       } catch {
         // noop
+      }
+    };
+    load();
+  }, [actorId]);
+
+  useEffect(() => {
+    const load = async () => {
+      setSkillsLoading(true);
+      setSkillsError("");
+      try {
+        const items = await listSkills(actorId);
+        setSkills(items);
+      } catch {
+        setSkillsError("Não foi possível carregar skills agora.");
+      } finally {
+        setSkillsLoading(false);
       }
     };
     load();
@@ -351,25 +376,85 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
 - Acionar o agente RoundHound para executar próximos passos do pipeline.
 `;
 
-  const downloadSkill = (s) => {
+  const downloadSkill = async (s) => {
+    try {
+      if (s.id) {
+        const blob = await downloadSkillMarkdown(actorId, s.id);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${String(s.name || "skill").toLowerCase().replace(/\s+/g, "-")}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+        return;
+      }
+    } catch {
+      // fallback below
+    }
     const blob = new Blob([buildSkillMarkdown(s)], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${String(s.name || "skill").toLowerCase().replace(/\s+/g, "-")}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const fallbackURL = URL.createObjectURL(blob);
+    const fallbackA = document.createElement("a");
+    fallbackA.href = fallbackURL;
+    fallbackA.download = `${String(s.name || "skill").toLowerCase().replace(/\s+/g, "-")}.md`;
+    fallbackA.click();
+    URL.revokeObjectURL(fallbackURL);
   };
 
-  const createSkill = () => {
+  const createSkill = async () => {
     const name = skillName.trim();
     const project = skillProject.trim();
     const edital = skillEdital.trim();
     if (!name || !project || !edital) return;
-    setSkills((prev) => [{ id: `skill-${Date.now()}`, name, project, edital, status: "Rascunho", notifications: true }, ...prev]);
-    setSkillName("");
-    setSkillProject("");
-    setSkillEdital("");
+    try {
+      const item = await createSkillAPI(actorId, { name, project, edital, status: "Rascunho", notifications: true });
+      setSkills((prev) => [item, ...prev]);
+      setSkillName("");
+      setSkillProject("");
+      setSkillEdital("");
+    } catch {
+      setSkillsError("Falha ao salvar skill.");
+    }
+  };
+
+  const runSkillAction = async (skill, mode) => {
+    const selectedOpps = sorted.filter(o => sel.includes(o.id)).map(o => o.name);
+    const selectedSources = [...new Set(sorted.filter(o => sel.includes(o.id)).map(o => o.entity.split("/")[0].trim().toUpperCase()))];
+    const context = txt.trim() || ctxMeta?.project_context || `Projeto baseado nas oportunidades selecionadas: ${selectedOpps.join(", ")}`;
+    setRunningSkillID(skill.id);
+    try {
+      const out = await runSkillAPI(actorId, skill.id, {
+        run_mode: mode,
+        project_context: context,
+        selected_sources: selectedSources,
+        selected_opportunities: selectedOpps,
+      });
+      setRunBySkill((prev) => ({ ...prev, [skill.id]: out }));
+      const saved = await updateSkillAPI(actorId, skill.id, { status: "Ativa" });
+      setSkills((prev) => prev.map((s) => s.id === skill.id ? saved : s));
+      if (mode === "cloud") setStripe(true);
+    } catch {
+      setSkillsError("Falha ao executar skill.");
+    } finally {
+      setRunningSkillID("");
+    }
+  };
+
+  const toggleSkillNotifications = async (skill) => {
+    try {
+      const saved = await updateSkillAPI(actorId, skill.id, { notifications: !skill.notifications });
+      setSkills((prev) => prev.map((s) => s.id === skill.id ? saved : s));
+    } catch {
+      setSkillsError("Falha ao atualizar skill.");
+    }
+  };
+
+  const removeSkill = async (skill) => {
+    try {
+      await deleteSkillAPI(actorId, skill.id);
+      setSkills((prev) => prev.filter((s) => s.id !== skill.id));
+    } catch {
+      setSkillsError("Falha ao remover skill.");
+    }
   };
 
   const Logo = ({ size = 40 }) => (
@@ -563,17 +648,19 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
               <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 14, padding: 20 }}>
                 <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Criar Skill do Cliente</h3>
                 <p style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>Crie skills para projeto e edital com notificações e acionamento do agente RoundHound.</p>
+                {skillsError && <p style={{ fontSize: 12, color: "#ff6b6b", marginBottom: 10 }}>{skillsError}</p>}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 8 }}>
                   <input value={skillName} onChange={e => setSkillName(e.target.value)} placeholder="Nome da Skill" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 12 }} />
                   <input value={skillProject} onChange={e => setSkillProject(e.target.value)} placeholder="Projeto" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 12 }} />
                   <input value={skillEdital} onChange={e => setSkillEdital(e.target.value)} placeholder="Edital/Aplicação" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 12 }} />
                 </div>
                 <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-                  <button onClick={createSkill} style={{ background: "#00E676", border: "none", borderRadius: 8, padding: "8px 12px", color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Salvar Skill</button>
+                  <button onClick={() => createSkill()} style={{ background: "#00E676", border: "none", borderRadius: 8, padding: "8px 12px", color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Salvar Skill</button>
                   <button onClick={() => downloadSkill({ name: skillName || "nova-skill", project: skillProject || "projeto", edital: skillEdital || "edital" })} style={{ background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "8px 12px", color: "#bbb", fontSize: 12, cursor: "pointer" }}>Baixar .md</button>
                 </div>
               </div>
 
+              {skillsLoading && <p style={{ fontSize: 12, color: "#777" }}>Carregando skills...</p>}
               {skills.map((s) => (
                 <div key={s.id} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 14, padding: "16px 18px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 6 }}>
@@ -583,12 +670,16 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
                   <p style={{ fontSize: 12, color: "#777", marginBottom: 10 }}>{s.project} · {s.edital}</p>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button onClick={() => downloadSkill(s)} style={{ background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "7px 10px", color: "#bbb", fontSize: 12, cursor: "pointer" }}>Baixar</button>
-                    <button onClick={() => setStripe(true)} style={{ background: "#F5A623", border: "none", borderRadius: 8, padding: "7px 10px", color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Rodar no RoundHound Cloud (Pro)</button>
-                    <button onClick={() => setStripe(true)} style={{ background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "7px 10px", color: "#bbb", fontSize: 12, cursor: "pointer" }}>Ligar no Agente RoundHound</button>
+                    <button onClick={() => runSkillAction(s, "cloud")} style={{ background: "#F5A623", border: "none", borderRadius: 8, padding: "7px 10px", color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Rodar no RoundHound Cloud (Pro)</button>
+                    <button onClick={() => runSkillAction(s, "agent")} style={{ background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "7px 10px", color: "#bbb", fontSize: 12, cursor: "pointer" }}>Ligar no Agente RoundHound</button>
+                    <button onClick={() => toggleSkillNotifications(s)} style={{ background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "7px 10px", color: "#bbb", fontSize: 12, cursor: "pointer" }}>{s.notifications ? "Desativar alertas" : "Ativar alertas"}</button>
+                    <button onClick={() => removeSkill(s)} style={{ background: "none", border: "1px solid rgba(255,120,120,0.35)", borderRadius: 8, padding: "7px 10px", color: "#ff8484", fontSize: 12, cursor: "pointer" }}>Remover</button>
                   </div>
-                  <p style={{ fontSize: 11, color: "#666", marginTop: 8 }}>Notificações de edital e melhorias: <strong style={{ color: "#a8b6ad" }}>{s.notifications ? "ativas" : "inativas"}</strong></p>
+                  <p style={{ fontSize: 11, color: "#666", marginTop: 8 }}>Notificações de edital e melhorias: <strong style={{ color: "#a8b6ad" }}>{s.notifications ? "ativas" : "inativas"}</strong> {runningSkillID === s.id ? " · executando..." : ""}</p>
+                  {runBySkill[s.id]?.overview && <p style={{ fontSize: 11, color: "#F5A623", marginTop: 6 }}>{runBySkill[s.id].overview}</p>}
                 </div>
               ))}
+              {!skillsLoading && skills.length === 0 && <p style={{ fontSize: 12, color: "#666" }}>Nenhuma skill criada ainda.</p>}
             </div>}
 
             {dt === "notifs" && <div style={{ display: "flex", flexDirection: "column", gap: 8, animation: "slideUp 0.3s ease" }}>
