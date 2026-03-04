@@ -546,11 +546,43 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
         notifications: true,
       });
       setSkills((prev) => [item, ...prev]);
+      await downloadSkill(item);
       setSkillName("");
       setSkillProject("");
       setSkillEdital("");
     } catch {
       setSkillsError("Falha ao salvar skill.");
+    }
+  };
+
+  const generateSkillFromRecommendation = async () => {
+    if (!recommendation?.valid) return;
+    const currentProject = projects.find((p) => p.id === selectedProjectID);
+    const selectedName = sorted.find((o) => sel.includes(o.id))?.name || "Aplicação prioritária";
+    const rawName = recommendation?.suggested_skills?.[0] || recommendation?.headline || "skill-estrategica";
+    const name = String(rawName)
+      .replace(/^skill[-_\s]*/i, "")
+      .replace(/[-_]+/g, " ")
+      .trim()
+      .replace(/\b\w/g, (m) => m.toUpperCase());
+    const project = currentProject?.name || skillProject.trim() || "Projeto";
+    const edital = skillEdital.trim() || selectedName;
+    try {
+      const item = await createSkillAPI(actorId, {
+        name: name || "Skill Estratégica",
+        project,
+        project_id: currentProject?.id || "",
+        edital,
+        status: "Rascunho",
+        notifications: true,
+      });
+      setSkills((prev) => [item, ...prev]);
+      setSkillName("");
+      setSkillProject(project);
+      setSkillEdital("");
+      await downloadSkill(item);
+    } catch {
+      setSkillsError("Falha ao gerar skill a partir da recomendação.");
     }
   };
 
@@ -1033,7 +1065,7 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
                     </>
                   )}
                   {!recommendationLoading && !recommendation && <p style={{ fontSize: 12, color: "#777" }}>A recomendação automática só fica disponível quando houver projeto com evidência suficiente.</p>}
-                  {recommendation?.valid && <button onClick={askForRecommendation} style={{ marginTop: 8, background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "7px 10px", color: "#bbb", fontSize: 12, cursor: "pointer" }}>{recommendationLoading ? "Processando..." : "Pedir recomendação da IA"}</button>}
+                  {recommendation?.valid && <button onClick={generateSkillFromRecommendation} style={{ marginTop: 8, background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "7px 10px", color: "#bbb", fontSize: 12, cursor: "pointer" }}>{recommendationLoading ? "Processando..." : "Gerar esta Skill"}</button>}
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 8 }}>
                   <input value={skillName} onChange={e => setSkillName(e.target.value)} placeholder="Nome da Skill" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 12 }} />
