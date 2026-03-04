@@ -143,6 +143,9 @@ export default function App() {
   const [aiClassNote, setAiClassNote] = useState("");
   const [advisor, setAdvisor] = useState(null);
   const [advisorLoading, setAdvisorLoading] = useState(false);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
   const [ctxMeta, setCtxMeta] = useState(null);
   const [uploading, setUploading] = useState(false);
   const fr = useRef(null);
@@ -295,6 +298,37 @@ export default function App() {
       });
     } finally {
       setAdvisorLoading(false);
+    }
+  };
+
+  const sendConsultorChat = async () => {
+    const message = chatInput.trim();
+    if (!message) return;
+    const selectedOpps = sorted.filter(o => sel.includes(o.id)).map(o => o.name);
+    const selectedSources = [...new Set(sorted.filter(o => sel.includes(o.id)).map(o => o.entity.split("/")[0].trim().toUpperCase()))];
+    const context = txt.trim() || ctxMeta?.project_context || `Projeto baseado nas oportunidades selecionadas: ${selectedOpps.join(", ")}`;
+
+    setChatMessages((prev) => [...prev, { role: "user", text: message }]);
+    setChatInput("");
+    setChatLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/v1/ai/consultor-chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_context: context,
+          selected_sources: selectedSources,
+          selected_opportunities: selectedOpps,
+          user_message: message,
+        }),
+      });
+      if (!res.ok) throw new Error("ai_consultor_chat_failed");
+      const data = await res.json();
+      setChatMessages((prev) => [...prev, { role: "assistant", text: data.answer || "Sem resposta no momento." }]);
+    } catch {
+      setChatMessages((prev) => [...prev, { role: "assistant", text: "Não consegui responder agora. Tente novamente em instantes." }]);
+    } finally {
+      setChatLoading(false);
     }
   };
 
@@ -454,9 +488,33 @@ export default function App() {
                     </>
                   )}
                 </div>
+                {chatMessages.length > 0 && (
+                  <div style={{ maxHeight: 220, overflowY: "auto", borderTop: "1px solid rgba(255,255,255,0.05)", borderBottom: "1px solid rgba(255,255,255,0.05)", padding: "10px 0", marginBottom: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                    {chatMessages.map((m, i) => (
+                      <div key={i} style={{ fontSize: 12, color: m.role === "assistant" ? "#d7e6dc" : "#98a0a6", lineHeight: 1.5 }}>
+                        <span style={{ color: "#00E676", fontSize: 10, textTransform: "uppercase", letterSpacing: 1, marginRight: 6 }}>{m.role === "assistant" ? "IA" : "Você"}</span>
+                        {m.text}
+                      </div>
+                    ))}
+                    {chatLoading && <div style={{ fontSize: 12, color: "#777" }}>Consultor IA está respondendo...</div>}
+                  </div>
+                )}
                 <div style={{ display: "flex", gap: 8, borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: 16 }}>
-                  <input placeholder="Pergunte ao Roundhouse…" style={{ flex: 1, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "12px 16px", color: "#fff", fontSize: 13 }} onFocus={e => e.target.style.borderColor = "rgba(0,230,118,0.3)"} onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.08)"} />
-                  <button style={{ background: "#00E676", border: "none", borderRadius: 10, padding: "0 16px", cursor: "pointer", display: "flex", alignItems: "center" }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>
+                  <input
+                    value={chatInput}
+                    onChange={e => setChatInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        sendConsultorChat();
+                      }
+                    }}
+                    placeholder="Pergunte ao Roundhouse…"
+                    style={{ flex: 1, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "12px 16px", color: "#fff", fontSize: 13 }}
+                    onFocus={e => e.target.style.borderColor = "rgba(0,230,118,0.3)"}
+                    onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.08)"}
+                  />
+                  <button disabled={chatLoading || !chatInput.trim()} onClick={sendConsultorChat} style={{ background: "#00E676", opacity: chatLoading || !chatInput.trim() ? 0.55 : 1, border: "none", borderRadius: 10, padding: "0 16px", cursor: chatLoading || !chatInput.trim() ? "default" : "pointer", display: "flex", alignItems: "center" }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>
                 </div>
               </div>
             </div>}
