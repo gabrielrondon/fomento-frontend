@@ -192,6 +192,8 @@ export default function App() {
   const [needsWizard, setNeedsWizard] = useState(false);
   const [projectNameDraft, setProjectNameDraft] = useState("");
   const [projectNameSaving, setProjectNameSaving] = useState(false);
+  const [showGenerateSkillPopup, setShowGenerateSkillPopup] = useState(false);
+  const [pendingGeneratedSkill, setPendingGeneratedSkill] = useState(null);
   const fr = useRef(null);
 
   useEffect(() => { setFi(false); const t = setTimeout(() => setFi(true), 50); return () => clearTimeout(t); }, [pg]);
@@ -546,13 +548,21 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
         notifications: true,
       });
       setSkills((prev) => [item, ...prev]);
-      await downloadSkill(item);
+      setPendingGeneratedSkill(item);
+      setShowGenerateSkillPopup(true);
       setSkillName("");
       setSkillProject("");
       setSkillEdital("");
     } catch {
       setSkillsError("Falha ao salvar skill.");
     }
+  };
+
+  const confirmGeneratePendingSkill = async () => {
+    if (!pendingGeneratedSkill) return;
+    await downloadSkill(pendingGeneratedSkill);
+    setShowGenerateSkillPopup(false);
+    setPendingGeneratedSkill(null);
   };
 
   const generateSkillFromRecommendation = async () => {
@@ -1198,6 +1208,17 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
               </div>
               <button style={{ width: "100%", background: "linear-gradient(135deg, #F5A623, #E09D18)", border: "none", borderRadius: 10, padding: "14px", color: "#000", fontSize: 15, fontWeight: 700, fontFamily: "'Syne', sans-serif", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>Assinar com Stripe</button>
               <button onClick={() => setStripe(false)} style={{ width: "100%", background: "none", border: "none", color: "#555", fontSize: 12, marginTop: 12, cursor: "pointer" }}>Talvez depois</button>
+            </div>
+          </div>}
+
+          {showGenerateSkillPopup && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 110, backdropFilter: "blur(8px)" }} onClick={() => setShowGenerateSkillPopup(false)}>
+            <div onClick={e => e.stopPropagation()} style={{ background: "#0a0a0a", borderRadius: 16, border: "1px solid rgba(255,255,255,0.08)", padding: "24px 22px", width: "100%", maxWidth: 360, margin: 20 }}>
+              <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Skill salva</h3>
+              <p style={{ fontSize: 13, color: "#888", marginBottom: 18 }}>Deseja gerar agora a skill completa para download?</p>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button onClick={() => setShowGenerateSkillPopup(false)} style={{ background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "8px 12px", color: "#bbb", fontSize: 12, cursor: "pointer" }}>Agora não</button>
+                <button onClick={() => { void confirmGeneratePendingSkill(); }} style={{ background: "#00E676", border: "none", borderRadius: 8, padding: "8px 12px", color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Gerar esta Skill</button>
+              </div>
             </div>
           </div>}
         </div>
