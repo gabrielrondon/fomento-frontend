@@ -31,6 +31,12 @@ const MOCK_OPS = [
   { id: 4, name: "FINEP - Startup Conecta", entity: "FINEP", type: "Venture", value: "R$ 1M–10M", deadline: "2026-03-30", match: 82, tags: ["Startup", "Deeptech", "Token"], desc: "Investimento direto em startups de base tecnológica com equity e conversível." },
   { id: 5, name: "Programa ABC+", entity: "MAPA/BNDES", type: "Crédito", value: "R$ 150K–5M", deadline: "2026-07-01", match: 78, tags: ["Sustentável", "Carbono", "Agro"], desc: "Crédito para agricultura de baixa emissão de carbono, taxa de 7%a.a." },
   { id: 6, name: "EMBRAPII - Agritech", entity: "EMBRAPII", type: "Subvenção", value: "Até R$ 3M", deadline: "2026-04-30", match: 74, tags: ["P&D", "Parceria", "Agro"], desc: "Projetos cooperativos em unidades EMBRAPII focadas em agritech e bioeconomia." },
+  { id: 7, name: "CNPq Universal", entity: "CNPq", type: "Subvenção", value: "R$ 80K–300K", deadline: "2026-09-10", match: 71, tags: ["Pesquisa", "Inovação"], desc: "Apoio a projetos de pesquisa e desenvolvimento tecnológico em empresas e ICTs." },
+  { id: 8, name: "FAPESP PIPE Fase 2", entity: "FAPESP", type: "Subvenção", value: "R$ 500K–2M", deadline: "2026-10-10", match: 76, tags: ["Deeptech", "Validação"], desc: "Fomento para validação tecnológica e escalonamento de soluções inovadoras." },
+  { id: 9, name: "SEBRAE Startups Escala", entity: "SEBRAE", type: "Aceleração", value: "R$ 100K–400K", deadline: "2026-08-22", match: 68, tags: ["Tração", "Mercado"], desc: "Programa focado em aceleração comercial e acesso a mercado para startups." },
+  { id: 10, name: "SENAI Aliança Industrial", entity: "SENAI", type: "Subvenção", value: "R$ 300K–1.5M", deadline: "2026-07-28", match: 72, tags: ["Indústria 4.0", "Produtividade"], desc: "Projetos de digitalização, automação e eficiência industrial com rede SENAI." },
+  { id: 11, name: "FAPERJ Tecnova Rio", entity: "FAPERJ", type: "Subvenção", value: "R$ 200K–900K", deadline: "2026-11-12", match: 66, tags: ["Inovação", "Regional"], desc: "Subvenção econômica para startups e PMEs inovadoras no estado do Rio de Janeiro." },
+  { id: 12, name: "BNB FNE Inovação", entity: "BNB", type: "Crédito", value: "R$ 300K–3M", deadline: "2026-12-20", match: 64, tags: ["Nordeste", "Crédito"], desc: "Linha de crédito para inovação e modernização de cadeias produtivas regionais." },
 ];
 
 const DASH_APPS = [
@@ -283,7 +289,7 @@ export default function App() {
     load();
   }, [actorId]);
 
-  const steps = ["Analisando perfil do projeto…", "Cruzando com bases FINEP/BNDES…", "Calculando aderência…", "Ranqueando oportunidades…", "Preparando resultados…"];
+  const steps = ["Analisando perfil do projeto…", "Cruzando com múltiplas fontes…", "Calculando aderência…", "Ranqueando oportunidades…", "Preparando resultados…"];
 
   const persistProjectContext = async (contextText) => {
     const normalized = (contextText || "").trim();
