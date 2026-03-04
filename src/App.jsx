@@ -3,7 +3,10 @@ import {
   createSkill as createSkillAPI,
   deleteSkill as deleteSkillAPI,
   downloadSkillMarkdown,
+  getSkillRecommendation,
+  listProjects,
   listSkills,
+  runSkillRecommendation,
   runSkill as runSkillAPI,
   updateSkill as updateSkillAPI,
 } from "./skillsApi";
@@ -163,6 +166,11 @@ export default function App() {
   const [skillsError, setSkillsError] = useState("");
   const [runBySkill, setRunBySkill] = useState({});
   const [runningSkillID, setRunningSkillID] = useState("");
+  const [projects, setProjects] = useState([]);
+  const [selectedProjectID, setSelectedProjectID] = useState(() => localStorage.getItem("fomento_selected_project_id") || "");
+  const [recommendation, setRecommendation] = useState(null);
+  const [recommendationLoading, setRecommendationLoading] = useState(false);
+  const [recommendationError, setRecommendationError] = useState("");
   const [adminApiKey, setAdminApiKey] = useState(() => localStorage.getItem("fomento_admin_api_key") || "");
   const [quality, setQuality] = useState(null);
   const [qualityLoading, setQualityLoading] = useState(false);
@@ -195,6 +203,59 @@ export default function App() {
     };
     load();
   }, [actorId]);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const items = await listProjects(actorId);
+        setProjects(items);
+        if (!selectedProjectID && items.length > 0) {
+          setSelectedProjectID(items[0].id);
+          localStorage.setItem("fomento_selected_project_id", items[0].id);
+        }
+      } catch {
+        // noop
+      }
+    };
+    load();
+  }, [actorId, selectedProjectID]);
+
+  useEffect(() => {
+    if (selectedProjectID) {
+      localStorage.setItem("fomento_selected_project_id", selectedProjectID);
+    }
+  }, [selectedProjectID]);
+
+  useEffect(() => {
+    const load = async () => {
+      if (!selectedProjectID) return;
+      setRecommendationLoading(true);
+      setRecommendationError("");
+      try {
+        const existing = await getSkillRecommendation(actorId, selectedProjectID);
+        if (existing) {
+          setRecommendation(existing);
+          return;
+        }
+        const context = txt.trim() || ctxMeta?.project_context || "";
+        if (!context) return;
+        const created = await runSkillRecommendation(actorId, { project_id: selectedProjectID, project_context: context, force: false });
+        if (created?.valid) setRecommendation(created);
+      } catch {
+        setRecommendationError("Não foi possível carregar recomendação de skills.");
+      } finally {
+        setRecommendationLoading(false);
+      }
+    };
+    load();
+  }, [actorId, selectedProjectID, txt, ctxMeta]);
+
+  useEffect(() => {
+    const current = projects.find((p) => p.id === selectedProjectID);
+    if (current && !skillProject.trim()) {
+      setSkillProject(current.name);
+    }
+  }, [projects, selectedProjectID, skillProject]);
 
   useEffect(() => {
     const load = async () => {
@@ -237,6 +298,7 @@ export default function App() {
       const form = new FormData();
       form.append("file", file);
       form.append("actor_id", actorId);
+      if (selectedProjectID) form.append("project_id", selectedProjectID);
       if (txt.trim()) form.append("project_context", txt.trim());
       const res = await fetch(`${API_BASE}/v1/project-documents/upload`, {
         method: "POST",
@@ -246,9 +308,20 @@ export default function App() {
       if (!res.ok) throw new Error("upload_failed");
       const data = await res.json();
       const ctx = data?.context || {};
+      const linkedProject = data?.project;
+      const suggested = data?.project_suggestion;
       setFn(ctx?.document?.file_name || file.name);
       setTxt(ctx?.project_context || `[Arquivo: ${file.name}]`);
       setCtxMeta(ctx);
+      if (linkedProject?.id) {
+        setSelectedProjectID(linkedProject.id);
+      }
+      if (data?.needs_confirmation && suggested?.id && linkedProject?.id && suggested.id !== linkedProject.id) {
+        const reuseExisting = window.confirm(`Detectamos semelhança com o projeto "${suggested.name}". Deseja usar esse projeto existente?`);
+        if (reuseExisting) {
+          setSelectedProjectID(suggested.id);
+        }
+      }
     } catch {
       setFn(file.name);
       setTxt(`[Arquivo: ${file.name}]`);
@@ -428,13 +501,44 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
     const edital = skillEdital.trim();
     if (!name || !project || !edital) return;
     try {
-      const item = await createSkillAPI(actorId, { name, project, edital, status: "Rascunho", notifications: true });
+      const currentProject = projects.find((p) => p.id === selectedProjectID);
+      const item = await createSkillAPI(actorId, {
+        name,
+        project,
+        project_id: currentProject?.id || "",
+        edital,
+        status: "Rascunho",
+        notifications: true,
+      });
       setSkills((prev) => [item, ...prev]);
       setSkillName("");
       setSkillProject("");
       setSkillEdital("");
     } catch {
       setSkillsError("Falha ao salvar skill.");
+    }
+  };
+
+  const askForRecommendation = async () => {
+    if (!selectedProjectID) {
+      setRecommendationError("Selecione um projeto para pedir recomendação.");
+      return;
+    }
+    const context = txt.trim() || ctxMeta?.project_context || "";
+    setRecommendationLoading(true);
+    setRecommendationError("");
+    try {
+      const out = await runSkillRecommendation(actorId, { project_id: selectedProjectID, project_context: context, force: true });
+      if (!out?.valid) {
+        setRecommendation(null);
+        setRecommendationError(out?.reason_if_invalid ? `Recomendação não gerada: ${out.reason_if_invalid}` : "IA indicou contexto insuficiente.");
+        return;
+      }
+      setRecommendation(out);
+    } catch {
+      setRecommendationError("Falha ao pedir recomendação da IA.");
+    } finally {
+      setRecommendationLoading(false);
     }
   };
 
@@ -758,6 +862,26 @@ Gerenciar a aplicação do projeto "${s.project}" no edital "${s.edital}".
                 <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Criar Skill do Cliente</h3>
                 <p style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>Crie skills para projeto e edital com notificações e acionamento do agente RoundHound.</p>
                 {skillsError && <p style={{ fontSize: 12, color: "#ff6b6b", marginBottom: 10 }}>{skillsError}</p>}
+                {recommendationError && <p style={{ fontSize: 12, color: "#ff6b6b", marginBottom: 10 }}>{recommendationError}</p>}
+                <div style={{ marginBottom: 10 }}>
+                  <p style={{ fontSize: 11, color: "#666", marginBottom: 6 }}>Projeto</p>
+                  <select value={selectedProjectID} onChange={e => setSelectedProjectID(e.target.value)} style={{ width: "100%", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 12 }}>
+                    <option value="">Selecione um projeto</option>
+                    {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+                <div style={{ marginBottom: 10, padding: "10px", borderRadius: 8, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  <p style={{ fontSize: 12, color: "#ddd", marginBottom: 6 }}>Recomendação inicial de Skills</p>
+                  {recommendationLoading && <p style={{ fontSize: 12, color: "#777" }}>Gerando recomendação...</p>}
+                  {!recommendationLoading && recommendation?.valid && (
+                    <>
+                      <p style={{ fontSize: 12, color: "#b9d9c7", marginBottom: 6 }}>{recommendation.headline}</p>
+                      <p style={{ fontSize: 11, color: "#888" }}>Skills sugeridas: <strong style={{ color: "#ddd" }}>{(recommendation.suggested_skills || []).join(", ")}</strong></p>
+                    </>
+                  )}
+                  {!recommendationLoading && !recommendation && <p style={{ fontSize: 12, color: "#777" }}>A recomendação automática só fica disponível quando houver projeto com evidência suficiente.</p>}
+                  {recommendation?.valid && <button onClick={askForRecommendation} style={{ marginTop: 8, background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "7px 10px", color: "#bbb", fontSize: 12, cursor: "pointer" }}>{recommendationLoading ? "Processando..." : "Pedir recomendação da IA"}</button>}
+                </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 8 }}>
                   <input value={skillName} onChange={e => setSkillName(e.target.value)} placeholder="Nome da Skill" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 12 }} />
                   <input value={skillProject} onChange={e => setSkillProject(e.target.value)} placeholder="Projeto" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 12 }} />
